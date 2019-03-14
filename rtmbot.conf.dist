@@ -1,4 +1,4 @@
-DEBUG: True # make this False in production
+DEBUG: False
 SLACK_TOKEN: "SLACK_TOKEN_HERE"
 ACTIVE_PLUGINS:
     - plugins.tagger.Tagger
