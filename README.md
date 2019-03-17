@@ -4,6 +4,8 @@ This bot emulates slack user groups (@backend, @frontend, @own_name) in public o
 
 It can be used in workspaces that are at a free plan (free plan not include user groups)
 
+![Image build status](https://img.shields.io/docker/cloud/build/heavyrainx/tagger-bot.svg)
+
 ## Requirements
 
 1. Python 3.6+
