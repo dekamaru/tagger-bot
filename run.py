@@ -23,6 +23,11 @@ def parse_args():
         help='Bot User OAuth Access Token'
     )
     parser.add_argument(
+        '--bot_default_username',
+        help='Bot default username (used at bot creation step)',
+        metavar='default_username'
+    )
+    parser.add_argument(
         '--log_path',
         help='Store logs path',
         metavar='path'
@@ -47,12 +52,19 @@ def main(args=None):
         'LOGFILE': os.environ.get('LOG_PATH') or args.log_path,
         'ACTIVE_PLUGINS': [
             'plugins.tagger.Tagger'
-        ]
+        ],
+        'Tagger': {
+            'BOT_DEFAULT_USERNAME': os.environ.get('BOT_DEFAULT_USERNAME') or args.bot_default_username,
+        }
     }
 
     if config['SLACK_TOKEN'] is None:
         print('SLACK_TOKEN is not set! Define it in environment variable or provide as run argument --slack_token=YOUR_SLACK_TOKEN')
         sys.exit(1)
+
+    if config['Tagger']['BOT_DEFAULT_USERNAME'] is None:
+        print('BOT_DEFAULT_USERNAME is not set! Define it in environment variable or provide as run argument --bot_default_username=default_username')
+        sys.exit(2)
 
     bot = RtmBot(config)
     try:

@@ -2,14 +2,17 @@ from __future__ import print_function
 from rtmbot.core import Plugin
 import json
 import os.path
+import sys
 
 class Tagger(Plugin):
 
     def __init__(self, name=None, slack_client=None, plugin_config=None):
         super().__init__(name, slack_client, plugin_config)
-        self.BOT_NAME = 'tagger'
-
+        self.BOT_NAME = plugin_config['BOT_DEFAULT_USERNAME']
         self.bot_id = self.resolveBotId()
+        if self.bot_id is None:
+            print('Cant find bot id with bot default username "'+ self.BOT_NAME +'"')
+            sys.exit(3)
         self.groups = {}
         self.loadState()
 
@@ -197,21 +200,21 @@ class Tagger(Plugin):
     def getHelpText(self):
         message = 'That\'s what i can do:\n'
         message += '1. Register a new tag\n'
-        message += '    `@tagger register @TAG_NAME with @user1 @user2 @userN`\n'
+        message += '    `@'+self.BOT_NAME+' register @TAG_NAME with @user1 @user2 @userN`\n'
         message += '2. Unregister existing tag\n'
-        message += '    `@tagger unregister @TAG_NAME`\n'
+        message += '    `@'+self.BOT_NAME+' unregister @TAG_NAME`\n'
         message += '3. List tags of current channel\n'
-        message += '    `@tagger list`\n'   
+        message += '    `@'+self.BOT_NAME+' list`\n'   
         message += '4. Show commands list\n'
-        message += '    `@tagger help`\n'
+        message += '    `@'+self.BOT_NAME+' help`\n'
         return message
 
     def loadState(self):
-        if os.path.isfile('data.db'):
-            with open('data.db', 'r') as db:
+        if os.path.isfile('data/data.db'):
+            with open('data/data.db', 'r') as db:
                 self.groups = json.loads(db.read())
         
     def saveState(self):
-        with open('data.db', 'w') as db:
+        with open('data/data.db', 'w') as db:
             db.write(json.dumps(self.groups))
     
