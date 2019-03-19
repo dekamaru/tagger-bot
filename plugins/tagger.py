@@ -21,24 +21,21 @@ class Tagger(Plugin):
             self.sendWelcomeMessage(data)
             return
 
-        if self.isBotRemovedFromChannel(data):
-            print('i have been removed :(')
-            return
-
         if self.isBotMentioned(self.getMessageText(data)):
             self.handleBotCommands(data)
             return
 
-        knownTag = self.isKnownTagMentioned(self.getMessageText(data))
-        if knownTag is not False:
-            self.handleTag(knownTag, data)
-            return
+        knownTags = self.getMentionedKnownTags(self.getMessageText(data))
+        if len(knownTags) > 0:
+            self.sendTagNotifyMessage(knownTags, data)
 
-    def handleTag(self, tag, data):
-        if not self.isTagExistsInChannel(tag, data['channel']):
-            return
+    def sendTagNotifyMessage(self, tags, data):
+        participants = []
+        for tag in tags:
+             if self.isTagExistsInChannel(tag, data['channel']):
+                 participants += self.getParticipantsByTagAndChannel(tag, data['channel'])
 
-        participants = self.getParticipantsByTagAndChannel(tag, data['channel'])
+        participants = list(set(participants))
         message = '^^^\n' + ', '.join(participants)
         if self.isMessageInThread(data):
             self.slack_client.api_call("chat.postMessage", channel=data['channel'], text=message, thread_ts=data['thread_ts'])
@@ -60,11 +57,51 @@ class Tagger(Plugin):
             tag = parts[2]
             self.outputs.append([data['channel'], self.unregister(tag, data['channel'])])
 
+        if (command == 'add' or command == 'remove') and len(parts) > 3:
+            tag = parts[2]
+            participants = parts[3:]
+            if command == 'add':
+                self.outputs.append([data['channel'], self.addParticipantsToTag(data['channel'], tag, participants)])
+            else:
+                self.outputs.append([data['channel'], self.removeParticipantsFromTag(data['channel'], tag, participants)])
+
         if command == 'list':
             self.outputs.append([data['channel'], self.listTagsInChannel(data['channel'])])
 
         if command == 'help':
             self.sendHelpMessage(data)
+
+    def addParticipantsToTag(self, channel, tag, participants):
+        if not self.isTagExistsInChannel(tag, channel):
+            return 'Tag ' + tag +  ' not found in this channel.'
+
+        correctParticipants = []
+        for participant in participants:
+            if self.isUserMention(participant):
+                correctParticipants.append(participant)
+
+        if len(correctParticipants) == 0:
+            return 'Participants list length is 0. You must mention user with @'
+
+        self.addTagToChannel(tag, correctParticipants, channel)
+        return 'Tag ' + tag + ' members updated.'
+
+    def removeParticipantsFromTag(self, channel, tag, participants):
+        if not self.isTagExistsInChannel(tag, channel):
+            return 'Tag ' + tag +  ' not found in this channel.'
+
+        newParticipants = []
+        currentParticipants = self.getParticipantsByTagAndChannel(tag, channel)
+        for participant in currentParticipants:
+            if participant not in participants:
+                newParticipants.append(participant)
+        
+        if len(newParticipants) == 0:
+            return self.unregister(tag, channel)
+
+        self.groups[tag][channel] = list(set(newParticipants))
+        self.saveState()
+        return 'Tag ' + tag + ' members updated.'
 
     def unregister(self, tag, channel):
         if not self.isTagExistsInChannel(tag, channel):
@@ -96,7 +133,7 @@ class Tagger(Plugin):
         members = self.slack_client.api_call("users.list")['members']
         message = 'List of tags in this channel:\n'
         count = 0
-        for tag, channel in self.groups.items():
+        for tag, _ in self.groups.items():
             for groupChannelId, participants in self.groups[tag].items():
                 if groupChannelId == channelId:
                     message += ':black_small_square:*' + tag + ':* ' + ', '.join(self.transformIdsToUsernames(members, participants)) + '\n'
@@ -119,11 +156,12 @@ class Tagger(Plugin):
                     usernames.append('@'+memberName)
         return usernames
 
-    def isKnownTagMentioned(self, text):
-        for key, item in self.groups.items():
+    def getMentionedKnownTags(self, text):
+        tags = []
+        for key, _ in self.groups.items():
             if key in text:
-                return key
-        return False
+                tags.append(key)
+        return tags
 
     def getParticipantsByTagAndChannel(self, tag, channel):
         return self.groups[tag][channel]
@@ -163,8 +201,6 @@ class Tagger(Plugin):
     def isBotInvitedToChannel(self, data):
         return 'subtype' in data and (data['subtype'] == 'channel_join' or data['subtype'] == 'group_join') and data['user'] == self.bot_id
     
-    def isBotRemovedFromChannel(self, data):
-        return 'You have been removed' in self.getMessageText(data) and data['user'] == 'USLACKBOT'
 
     def isMessageInThread(self, data):
         return 'thread_ts' in data and 'bot_id' not in data
@@ -198,15 +234,21 @@ class Tagger(Plugin):
         self.outputs.append([data['channel'], self.getHelpText()])
     
     def getHelpText(self):
+        commands = [
+            ['Register a new tag', 'register @TAG_NAME with @user1 @user2 @userN'],
+            ['Unregister existing tag', 'unregister @TAG_NAME'],
+            ['Add members to existing tag', 'add @TAG_NAME @user1 @user2 @userN'],
+            ['Remove members from existing tag', 'remove @TAG_NAME @user1 @user2 @userN'],
+            ['List tags of current channel', 'list'],
+            ['Show commands list', 'help']
+        ]
+
         message = 'That\'s what i can do:\n'
-        message += '1. Register a new tag\n'
-        message += '    `@'+self.BOT_NAME+' register @TAG_NAME with @user1 @user2 @userN`\n'
-        message += '2. Unregister existing tag\n'
-        message += '    `@'+self.BOT_NAME+' unregister @TAG_NAME`\n'
-        message += '3. List tags of current channel\n'
-        message += '    `@'+self.BOT_NAME+' list`\n'   
-        message += '4. Show commands list\n'
-        message += '    `@'+self.BOT_NAME+' help`\n'
+        commandIndex = 1
+        for command in commands:
+            message += str(commandIndex) + '. ' + command[0] + '\n'
+            message += '    `@' + self.BOT_NAME + ' ' + command[1] + '`\n'
+            commandIndex += 1
         return message
 
     def loadState(self):
